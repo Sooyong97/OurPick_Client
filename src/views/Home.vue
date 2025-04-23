@@ -6,10 +6,30 @@
       <div class="section" v-for="(section, index) in sections" :key="index" :ref="'section'+index">
         <p class="text">{{ section.text }}</p>
       </div>
-      <button class="start-button" ref="startButton" @click="startApp" @mousemove="handleMouseMove">
+      <button class="start-button" ref="startButton" @click="showLoginModal" @mousemove="handleMouseMove">
         시작하기
         <div class="button-background"></div>
       </button>
+    </div>
+
+    <!-- 로그인 모달 -->
+    <div class="modal-overlay" v-if="isLoginModalVisible" @click="hideLoginModal">
+      <div class="login-modal" @click.stop>
+        <h2>로그인</h2>
+        <form @submit.prevent="handleLogin" class="login-form">
+          <div class="form-group">
+            <input type="email" v-model="email" placeholder="이메일" required>
+          </div>
+          <div class="form-group">
+            <input type="password" v-model="password" placeholder="비밀번호" required>
+          </div>
+          <button type="submit" class="login-button">로그인</button>
+        </form>
+        <div class="login-footer">
+          <span>계정이 없으신가요? </span>
+          <a href="#" @click.prevent="toggleSignup">회원가입</a>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -28,7 +48,10 @@ export default {
         { text: '당신의 최고의 선택을 위한' },
         { text: '최적의 플랫폼' },
         { text: '지금 시작해보세요' }
-      ]
+      ],
+      isLoginModalVisible: false,
+      email: '',
+      password: ''
     }
   },
   mounted() {
@@ -88,15 +111,22 @@ export default {
         ease: 'power2.out',
       })
     },
+    showLoginModal() {
+      this.isLoginModalVisible = true
+    },
+    hideLoginModal() {
+      this.isLoginModalVisible = false
+    },
+    handleLogin() {
+      // TODO: 로그인 로직 구현
+      console.log('Login attempt:', this.email)
+    },
+    toggleSignup() {
+      // TODO: 회원가입 전환 로직 구현
+      console.log('Toggle signup')
+    },
     startApp() {
-      gsap.to(this.$refs.content, {
-        scale: 0.8,
-        opacity: 0,
-        duration: 0.5,
-        onComplete: () => {
-          console.log('Animation complete - start application')
-        },
-      })
+      this.showLoginModal()
     }
   }
 }
@@ -213,6 +243,113 @@ export default {
 
   .text {
     font-size: 1.2rem;
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.login-modal {
+  background: white;
+  padding: 2rem;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  animation: slideUp 0.3s ease;
+}
+
+.login-modal h2 {
+  color: #35495e;
+  margin-bottom: 1.5rem;
+  font-size: 1.8rem;
+  text-align: center;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group {
+  position: relative;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid #eee;
+  border-radius: 10px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.form-group input:focus {
+  border-color: #a8e6cf;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.2);
+}
+
+.login-button {
+  background: #a8e6cf;
+  color: white;
+  padding: 1rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+}
+
+.login-button:hover {
+  background: #8ed3b9;
+  transform: translateY(-2px);
+}
+
+.login-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: #666;
+}
+
+.login-footer a {
+  color: #a8e6cf;
+  text-decoration: none;
+  font-weight: bold;
+  margin-left: 0.5rem;
+}
+
+.login-footer a:hover {
+  color: #8ed3b9;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style> 
