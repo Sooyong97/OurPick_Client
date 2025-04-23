@@ -45,8 +45,8 @@ export default {
   data() {
     return {
       sections: [
-        { text: '당신의 최고의 선택을 위한' },
-        { text: '최적의 플랫폼' },
+        { text: '우리들만의 공유를 위한' },
+        { text: '최적의 서비스' },
         { text: '지금 시작해보세요' }
       ],
       isLoginModalVisible: false,
