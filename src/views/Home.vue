@@ -37,16 +37,41 @@
         <!-- 회원가입 폼 -->
         <form v-else-if="!isEmailVerificationView" @submit.prevent="handleSignup" class="form" novalidate>
           <div class="form-group">
-            <input type="email" v-model="signupEmail" placeholder="이메일" required @blur="validateEmail" @input="validateEmail">
+            <input 
+              type="email" 
+              v-model="signupEmail" 
+              placeholder="이메일" 
+              required 
+              @blur="validateEmail"
+              @input="handleEmailInput"
+              :class="{ 'checking': isCheckingEmail }"
+            >
             <span class="error-message" v-if="emailError">{{ emailError }}</span>
+            <span class="success-message" v-if="emailSuccess">사용 가능한 이메일입니다.</span>
           </div>
           <div class="form-group">
-            <input type="password" v-model="signupPassword" placeholder="비밀번호" required @blur="validatePassword" @input="validatePassword">
+            <input 
+              type="password" 
+              v-model="signupPassword" 
+              placeholder="비밀번호" 
+              required 
+              @blur="validatePassword"
+              @input="validatePassword"
+            >
             <span class="error-message" v-if="passwordError">{{ passwordError }}</span>
+            <span class="success-message" v-if="passwordSuccess">사용 가능한 비밀번호입니다.</span>
           </div>
           <div class="form-group">
-            <input type="password" v-model="confirmPassword" placeholder="비밀번호 확인" required @blur="validateConfirmPassword" @input="validateConfirmPassword">
+            <input 
+              type="password" 
+              v-model="confirmPassword" 
+              placeholder="비밀번호 확인" 
+              required 
+              @blur="validateConfirmPassword"
+              @input="validateConfirmPassword"
+            >
             <span class="error-message" v-if="confirmPasswordError">{{ confirmPasswordError }}</span>
+            <span class="success-message" v-if="confirmPasswordSuccess">비밀번호가 일치합니다.</span>
           </div>
           <button type="submit" class="submit-button" :disabled="!isFormValid">회원가입</button>
           <div class="form-footer">
@@ -95,6 +120,12 @@
 <script>
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import axios from 'axios'
+
+// axios 인스턴스 생성
+const api = axios.create({
+  baseURL: 'http://localhost:8080'
+})
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -121,7 +152,11 @@ export default {
       verificationDigits: ['', '', '', '', '', ''],
       verificationError: '',
       remainingTime: 0,
-      timerInterval: null
+      timerInterval: null,
+      isCheckingEmail: false, // 이메일 중복 확인 중 상태
+      emailSuccess: false, // 추가된 데이터
+      passwordSuccess: false,
+      confirmPasswordSuccess: false
     }
   },
   computed: {
@@ -251,28 +286,77 @@ export default {
       this.emailError = ''
       this.passwordError = ''
       this.confirmPasswordError = ''
+      this.emailSuccess = false
+      this.passwordSuccess = false
+      this.confirmPasswordSuccess = false
     },
-    validateEmail() {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    async validateEmail() {
       if (!this.signupEmail) {
         this.emailError = '이메일을 입력해주세요.'
-      } else if (!emailRegex.test(this.signupEmail)) {
-        this.emailError = '올바른 이메일 형식이 아닙니다.'
-      } else {
-        this.emailError = ''
+        this.emailSuccess = false
+        return false
       }
-      return !this.emailError
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(this.signupEmail)) {
+        this.emailError = '올바른 이메일 형식이 아닙니다.'
+        this.emailSuccess = false
+        return false
+      }
+
+      try {
+        this.isCheckingEmail = true
+        const response = await api.post('/api/accounts/emailcheck', {
+          email: this.signupEmail
+        })
+        
+        // response.data에서 valid 값 확인
+        if (response.data && typeof response.data.valid === 'boolean') {
+          if (!response.data.valid) {
+            this.emailError = '이미 존재하는 이메일입니다.'
+            this.emailSuccess = false
+            return false
+          }
+          this.emailError = ''
+          this.emailSuccess = true
+          return true
+        } else {
+          throw new Error('Invalid response format')
+        }
+      } catch (error) {
+        console.error('이메일 중복 확인 중 오류:', error)
+        if (error.response) {
+          // 서버에서 응답이 왔지만 에러인 경우
+          this.emailError = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        } else if (error.request) {
+          // 요청은 보냈지만 응답을 받지 못한 경우
+          this.emailError = '서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.'
+        } else {
+          // 요청 자체를 보내지 못한 경우
+          this.emailError = '이메일 중복 확인 중 오류가 발생했습니다.'
+        }
+        this.emailSuccess = false
+        return false
+      } finally {
+        this.isCheckingEmail = false
+      }
     },
     validatePassword() {
       // 8자 이상, 대문자, 소문자, 숫자, 특수문자(!@#$%^&*) 포함
       const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/
       if (!this.signupPassword) {
         this.passwordError = '비밀번호를 입력해주세요.'
+        this.passwordSuccess = false
+        return false
       } else if (!passwordRegex.test(this.signupPassword)) {
         this.passwordError = '8자 이상, 대/소문자, 숫자, 특수기호를 포함해야 합니다.'
+        this.passwordSuccess = false
+        return false
       } else {
         this.passwordError = ''
+        this.passwordSuccess = true
       }
+      
       // 비밀번호 확인 필드도 함께 검증 (비밀번호 변경 시)
       if (this.confirmPassword) {
         this.validateConfirmPassword()
@@ -282,12 +366,17 @@ export default {
     validateConfirmPassword() {
       if (!this.confirmPassword) {
         this.confirmPasswordError = '비밀번호 확인을 입력해주세요.'
+        this.confirmPasswordSuccess = false
+        return false
       } else if (this.signupPassword !== this.confirmPassword) {
         this.confirmPasswordError = '비밀번호가 일치하지 않습니다.'
+        this.confirmPasswordSuccess = false
+        return false
       } else {
         this.confirmPasswordError = ''
+        this.confirmPasswordSuccess = true
+        return true
       }
-      return !this.confirmPasswordError
     },
     startVerificationTimer() {
       this.remainingTime = 180 // 3분
@@ -363,6 +452,19 @@ export default {
     },
     clearVerificationInputs() {
       this.verificationDigits = ['', '', '', '', '', '']
+    },
+    // 이메일 입력 디바운스 처리를 위한 타이머
+    debounceTimer: null,
+    handleEmailInput() {
+      // 이전 타이머 취소
+      if (this.debounceTimer) {
+        clearTimeout(this.debounceTimer)
+      }
+      
+      // 300ms 후에 유효성 검사 실행
+      this.debounceTimer = setTimeout(() => {
+        this.validateEmail()
+      }, 300)
     }
   },
   beforeUnmount() {
@@ -524,7 +626,7 @@ export default {
 
 .form-group {
   position: relative;
-  margin-bottom: 1rem; /* 에러 메시지 공간 확보 */
+  margin-bottom: 1.5rem; /* 메시지 공간 확보를 위해 여백 증가 */
 }
 
 .form-group input {
@@ -593,12 +695,20 @@ export default {
   }
 }
 
-.error-message {
-  color: #e74c3c; /* 빨간색 계열 */
+.error-message,
+.success-message {
   font-size: 0.8rem;
   position: absolute;
   left: 0;
-  bottom: -1.2rem; /* 입력창 바로 아래 */
+  bottom: -1.2rem;
+}
+
+.error-message {
+  color: #e74c3c;
+}
+
+.success-message {
+  color: #2ecc71;
 }
 
 .verification-inputs {
@@ -673,5 +783,11 @@ export default {
 .resend-button:disabled {
   border-color: #ccc;
   color: #999;
+}
+
+.checking {
+  background-color: #f8f9fa;
+  pointer-events: none;
+  opacity: 0.7;
 }
 </style> 
