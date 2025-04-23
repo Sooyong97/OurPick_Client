@@ -6,28 +6,86 @@
       <div class="section" v-for="(section, index) in sections" :key="index" :ref="'section'+index">
         <p class="text">{{ section.text }}</p>
       </div>
-      <button class="start-button" ref="startButton" @click="showLoginModal" @mousemove="handleMouseMove">
+      <button class="start-button" ref="startButton" @click="showModal" @mousemove="handleMouseMove">
         시작하기
         <div class="button-background"></div>
       </button>
     </div>
 
-    <!-- 로그인 모달 -->
-    <div class="modal-overlay" v-if="isLoginModalVisible" @click="hideLoginModal">
-      <div class="login-modal" @click.stop>
-        <h2>로그인</h2>
-        <form @submit.prevent="handleLogin" class="login-form">
+    <!-- 로그인/회원가입 모달 -->
+    <div class="modal-overlay" v-if="isModalVisible" @click="hideModal">
+      <div class="modal-content" @click.stop>
+        <h2 v-if="isLoginView">로그인</h2>
+        <h2 v-else-if="!isEmailVerificationView">회원가입</h2>
+        <h2 v-else>이메일 인증</h2>
+
+        <!-- 로그인 폼 -->
+        <form v-if="isLoginView" @submit.prevent="handleLogin" class="form">
           <div class="form-group">
-            <input type="email" v-model="email" placeholder="이메일" required>
+            <input type="email" v-model="loginEmail" placeholder="이메일" required>
           </div>
           <div class="form-group">
-            <input type="password" v-model="password" placeholder="비밀번호" required>
+            <input type="password" v-model="loginPassword" placeholder="비밀번호" required>
           </div>
-          <button type="submit" class="login-button">로그인</button>
+          <button type="submit" class="submit-button">로그인</button>
+          <div class="form-footer">
+            <span>계정이 없으신가요? </span>
+            <a href="#" @click.prevent="toggleView">회원가입</a>
+          </div>
         </form>
-        <div class="login-footer">
-          <span>계정이 없으신가요? </span>
-          <a href="#" @click.prevent="toggleSignup">회원가입</a>
+
+        <!-- 회원가입 폼 -->
+        <form v-else-if="!isEmailVerificationView" @submit.prevent="handleSignup" class="form" novalidate>
+          <div class="form-group">
+            <input type="email" v-model="signupEmail" placeholder="이메일" required @blur="validateEmail" @input="validateEmail">
+            <span class="error-message" v-if="emailError">{{ emailError }}</span>
+          </div>
+          <div class="form-group">
+            <input type="password" v-model="signupPassword" placeholder="비밀번호" required @blur="validatePassword" @input="validatePassword">
+            <span class="error-message" v-if="passwordError">{{ passwordError }}</span>
+          </div>
+          <div class="form-group">
+            <input type="password" v-model="confirmPassword" placeholder="비밀번호 확인" required @blur="validateConfirmPassword" @input="validateConfirmPassword">
+            <span class="error-message" v-if="confirmPasswordError">{{ confirmPasswordError }}</span>
+          </div>
+          <button type="submit" class="submit-button" :disabled="!isFormValid">회원가입</button>
+          <div class="form-footer">
+            <span>이미 계정이 있으신가요? </span>
+            <a href="#" @click.prevent="toggleView">로그인</a>
+          </div>
+        </form>
+
+        <!-- 이메일 인증 폼 -->
+        <div v-else class="form">
+          <p class="verification-message">{{ signupEmail }}으로<br>인증 코드를 전송했습니다.</p>
+          <div class="verification-inputs">
+            <template v-for="n in 6" :key="n">
+              <input
+                type="text"
+                v-model="verificationDigits[n-1]"
+                maxlength="1"
+                class="verification-digit"
+                :ref="'digit' + (n-1)"
+                @input="handleDigitInput($event, n-1)"
+                @keydown="handleKeydown($event, n-1)"
+                @focus="$event.target.select()"
+                pattern="[0-9]*"
+                inputmode="numeric"
+                placeholder="-"
+              >
+              <span v-if="n < 6" class="verification-digit-spacer"></span>
+            </template>
+          </div>
+          <span class="error-message" v-if="verificationError">{{ verificationError }}</span>
+          <div class="verification-timer" v-if="remainingTime > 0">
+            {{ formatTime(remainingTime) }}
+          </div>
+          <button @click="verifyEmail" class="submit-button" :disabled="!isVerificationComplete">
+            인증하기
+          </button>
+          <button @click="resendVerificationCode" class="resend-button" :disabled="remainingTime > 0">
+            인증코드 재전송
+          </button>
         </div>
       </div>
     </div>
@@ -49,9 +107,37 @@ export default {
         { text: '최적의 서비스' },
         { text: '지금 시작해보세요' }
       ],
-      isLoginModalVisible: false,
-      email: '',
-      password: ''
+      isModalVisible: false,
+      isLoginView: true, // true: 로그인 뷰, false: 회원가입 뷰
+      loginEmail: '',
+      loginPassword: '',
+      signupEmail: '',
+      signupPassword: '',
+      confirmPassword: '',
+      emailError: '', // 이메일 에러 메시지
+      passwordError: '', // 비밀번호 에러 메시지
+      confirmPasswordError: '', // 비밀번호 확인 에러 메시지
+      isEmailVerificationView: false,
+      verificationDigits: ['', '', '', '', '', ''],
+      verificationError: '',
+      remainingTime: 0,
+      timerInterval: null
+    }
+  },
+  computed: {
+    isFormValid() {
+      return !this.emailError && 
+             !this.passwordError && 
+             !this.confirmPasswordError && 
+             this.signupEmail && 
+             this.signupPassword && 
+             this.confirmPassword
+    },
+    isVerificationComplete() {
+      return this.verificationDigits.every(digit => digit.length === 1 && /^\d$/.test(digit))
+    },
+    verificationCode() {
+      return this.verificationDigits.join('')
     }
   },
   mounted() {
@@ -111,23 +197,176 @@ export default {
         ease: 'power2.out',
       })
     },
-    showLoginModal() {
-      this.isLoginModalVisible = true
+    showModal() {
+      this.isModalVisible = true
+      this.isLoginView = true // 모달 열 때 항상 로그인 뷰로 시작
+      // Reset form fields and errors when opening
+      this.loginEmail = ''
+      this.loginPassword = ''
+      this.signupEmail = ''
+      this.signupPassword = ''
+      this.confirmPassword = ''
+      this.clearErrors()
     },
-    hideLoginModal() {
-      this.isLoginModalVisible = false
+    hideModal() {
+      this.isModalVisible = false
+      this.isEmailVerificationView = false
+      this.clearVerificationInputs()
+      this.verificationError = ''
+      clearInterval(this.timerInterval)
+      this.clearErrors()
+    },
+    toggleView() {
+      if (this.isEmailVerificationView) {
+        this.isEmailVerificationView = false
+      } else {
+        this.isLoginView = !this.isLoginView
+      }
+      this.clearErrors()
     },
     handleLogin() {
       // TODO: 로그인 로직 구현
-      console.log('Login attempt:', this.email)
+      console.log('Login attempt:', this.loginEmail)
     },
-    toggleSignup() {
-      // TODO: 회원가입 전환 로직 구현
-      console.log('Toggle signup')
+    handleSignup() {
+      // 각 필드 유효성 검사 실행
+      const isEmailValid = this.validateEmail()
+      const isPasswordValid = this.validatePassword()
+      const isConfirmPasswordValid = this.validateConfirmPassword()
+
+      if (isEmailValid && isPasswordValid && isConfirmPasswordValid) {
+        try {
+          // TODO: 실제 이메일 인증 코드 발송 API 호출
+          console.log('Verification code sent to:', this.signupEmail)
+          
+          // 이메일 인증 뷰로 전환
+          this.isEmailVerificationView = true
+          this.startVerificationTimer()
+        } catch (error) {
+          console.error('Failed to send verification code:', error)
+        }
+      }
+    },
+    clearErrors() {
+      this.emailError = ''
+      this.passwordError = ''
+      this.confirmPasswordError = ''
+    },
+    validateEmail() {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!this.signupEmail) {
+        this.emailError = '이메일을 입력해주세요.'
+      } else if (!emailRegex.test(this.signupEmail)) {
+        this.emailError = '올바른 이메일 형식이 아닙니다.'
+      } else {
+        this.emailError = ''
+      }
+      return !this.emailError
+    },
+    validatePassword() {
+      // 8자 이상, 대문자, 소문자, 숫자, 특수문자(!@#$%^&*) 포함
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/
+      if (!this.signupPassword) {
+        this.passwordError = '비밀번호를 입력해주세요.'
+      } else if (!passwordRegex.test(this.signupPassword)) {
+        this.passwordError = '8자 이상, 대/소문자, 숫자, 특수기호를 포함해야 합니다.'
+      } else {
+        this.passwordError = ''
+      }
+      // 비밀번호 확인 필드도 함께 검증 (비밀번호 변경 시)
+      if (this.confirmPassword) {
+        this.validateConfirmPassword()
+      }
+      return !this.passwordError
+    },
+    validateConfirmPassword() {
+      if (!this.confirmPassword) {
+        this.confirmPasswordError = '비밀번호 확인을 입력해주세요.'
+      } else if (this.signupPassword !== this.confirmPassword) {
+        this.confirmPasswordError = '비밀번호가 일치하지 않습니다.'
+      } else {
+        this.confirmPasswordError = ''
+      }
+      return !this.confirmPasswordError
+    },
+    startVerificationTimer() {
+      this.remainingTime = 180 // 3분
+      clearInterval(this.timerInterval)
+      this.timerInterval = setInterval(() => {
+        if (this.remainingTime > 0) {
+          this.remainingTime--
+        } else {
+          clearInterval(this.timerInterval)
+        }
+      }, 1000)
+    },
+    formatTime(seconds) {
+      const minutes = Math.floor(seconds / 60)
+      const remainingSeconds = seconds % 60
+      return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+    },
+    async verifyEmail() {
+      try {
+        // TODO: 실제 이메일 인증 코드 확인 API 호출
+        if (this.verificationCode === '123456') { // 임시 검증 로직
+          console.log('Email verified successfully')
+          alert('이메일 인증이 완료되었습니다.')
+          this.hideModal()
+          // TODO: 회원가입 완료 처리
+        } else {
+          this.verificationError = '잘못된 인증 코드입니다.'
+        }
+      } catch (error) {
+        console.error('Failed to verify email:', error)
+        this.verificationError = '인증 처리 중 오류가 발생했습니다.'
+      }
+    },
+    async resendVerificationCode() {
+      try {
+        // TODO: 실제 인증 코드 재전송 API 호출
+        console.log('Resending verification code to:', this.signupEmail)
+        this.startVerificationTimer()
+        this.verificationError = ''
+      } catch (error) {
+        console.error('Failed to resend verification code:', error)
+        this.verificationError = '인증 코드 재전송에 실패했습니다.'
+      }
     },
     startApp() {
-      this.showLoginModal()
+      this.showModal()
+    },
+    handleDigitInput(event, index) {
+      const value = event.target.value
+      // 숫자만 허용
+      if (!/^\d*$/.test(value)) {
+        this.verificationDigits[index] = ''
+        return
+      }
+      
+      // 마지막 입력된 문자만 유지
+      this.verificationDigits[index] = value.slice(-1)
+      
+      // 다음 입력 칸으로 이동
+      if (value && index < 5) {
+        this.$nextTick(() => {
+          this.$refs['digit' + (index + 1)][0].focus()
+        })
+      }
+    },
+    handleKeydown(event, index) {
+      // Backspace 처리
+      if (event.key === 'Backspace' && !this.verificationDigits[index] && index > 0) {
+        this.$nextTick(() => {
+          this.$refs['digit' + (index - 1)][0].focus()
+        })
+      }
+    },
+    clearVerificationInputs() {
+      this.verificationDigits = ['', '', '', '', '', '']
     }
+  },
+  beforeUnmount() {
+    clearInterval(this.timerInterval)
   }
 }
 </script>
@@ -260,7 +499,7 @@ export default {
   animation: fadeIn 0.3s ease;
 }
 
-.login-modal {
+.modal-content {
   background: white;
   padding: 2rem;
   border-radius: 20px;
@@ -270,14 +509,14 @@ export default {
   animation: slideUp 0.3s ease;
 }
 
-.login-modal h2 {
+.modal-content h2 {
   color: #35495e;
   margin-bottom: 1.5rem;
   font-size: 1.8rem;
   text-align: center;
 }
 
-.login-form {
+.form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -285,6 +524,7 @@ export default {
 
 .form-group {
   position: relative;
+  margin-bottom: 1rem; /* 에러 메시지 공간 확보 */
 }
 
 .form-group input {
@@ -302,7 +542,7 @@ export default {
   box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.2);
 }
 
-.login-button {
+.submit-button {
   background: #a8e6cf;
   color: white;
   padding: 1rem;
@@ -315,25 +555,25 @@ export default {
   margin-top: 1rem;
 }
 
-.login-button:hover {
+.submit-button:hover {
   background: #8ed3b9;
   transform: translateY(-2px);
 }
 
-.login-footer {
+.form-footer {
   margin-top: 1.5rem;
   text-align: center;
   color: #666;
 }
 
-.login-footer a {
+.form-footer a {
   color: #a8e6cf;
   text-decoration: none;
   font-weight: bold;
   margin-left: 0.5rem;
 }
 
-.login-footer a:hover {
+.form-footer a:hover {
   color: #8ed3b9;
 }
 
@@ -351,5 +591,87 @@ export default {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.error-message {
+  color: #e74c3c; /* 빨간색 계열 */
+  font-size: 0.8rem;
+  position: absolute;
+  left: 0;
+  bottom: -1.2rem; /* 입력창 바로 아래 */
+}
+
+.verification-inputs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 2rem 0;
+  gap: 0.5rem;
+}
+
+.verification-digit {
+  width: 40px;
+  height: 50px;
+  text-align: center;
+  font-size: 1.5rem;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+  transition: all 0.3s ease;
+}
+
+.verification-digit:focus {
+  border-color: #a8e6cf;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.2);
+}
+
+.verification-digit-spacer {
+  width: 8px;
+}
+
+.verification-message {
+  text-align: center;
+  color: #666;
+  margin: 1.5rem 0;
+  line-height: 1.6;
+}
+
+.verification-timer {
+  text-align: center;
+  color: #e74c3c;
+  font-weight: bold;
+  margin: 1rem 0;
+}
+
+.resend-button {
+  background: transparent;
+  color: #666;
+  border: 1px solid #ddd;
+  padding: 0.8rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.resend-button:hover:not(:disabled) {
+  background: #f8f9fa;
+  border-color: #a8e6cf;
+  color: #a8e6cf;
+}
+
+.submit-button:disabled,
+.resend-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.resend-button:disabled {
+  border-color: #ccc;
+  color: #999;
 }
 </style> 
