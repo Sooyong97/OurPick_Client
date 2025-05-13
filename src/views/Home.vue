@@ -13,8 +13,9 @@
     </div>
 
     <!-- 로그인/회원가입 모달 -->
-    <div class="modal-overlay" v-if="isModalVisible" @click="hideModal">
-      <div class="modal-content" @click.stop>
+    <div class="modal-overlay" v-if="isModalVisible">
+      <div class="modal-content">
+        <button class="close-button" @click="hideModal">×</button>
         <h2 v-if="isLoginView">로그인</h2>
         <h2 v-else-if="!isEmailVerificationView">회원가입</h2>
         <h2 v-else>이메일 인증</h2>
@@ -263,7 +264,7 @@ export default {
       // TODO: 로그인 로직 구현
       console.log('Login attempt:', this.loginEmail)
     },
-    handleSignup() {
+    async handleSignup() {
       // 각 필드 유효성 검사 실행
       const isEmailValid = this.validateEmail()
       const isPasswordValid = this.validatePassword()
@@ -271,14 +272,21 @@ export default {
 
       if (isEmailValid && isPasswordValid && isConfirmPasswordValid) {
         try {
-          // TODO: 실제 이메일 인증 코드 발송 API 호출
-          console.log('Verification code sent to:', this.signupEmail)
+          // 이메일 인증 코드 발송 API 호출
+          const response = await api.post('/api/mail/send-email', {
+            email: this.signupEmail
+          })
           
-          // 이메일 인증 뷰로 전환
-          this.isEmailVerificationView = true
-          this.startVerificationTimer()
+          if (response.data.message === 'EMAIL_SENT') {
+            // 이메일 인증 뷰로 전환
+            this.isEmailVerificationView = true
+            this.startVerificationTimer()
+          } else {
+            throw new Error('이메일 전송에 실패했습니다.')
+          }
         } catch (error) {
           console.error('Failed to send verification code:', error)
+          alert('이메일 인증 코드 전송에 실패했습니다. 다시 시도해주세요.')
         }
       }
     },
@@ -396,12 +404,29 @@ export default {
     },
     async verifyEmail() {
       try {
-        // TODO: 실제 이메일 인증 코드 확인 API 호출
-        if (this.verificationCode === '123456') { // 임시 검증 로직
-          console.log('Email verified successfully')
-          alert('이메일 인증이 완료되었습니다.')
-          this.hideModal()
-          // TODO: 회원가입 완료 처리
+        const response = await api.post('/api/mail/verify-code', {
+          email: this.signupEmail,
+          code: this.verificationCode
+        })
+
+        if (response.data.message === 'SUCCESS') {
+          // 회원가입 API 호출
+          try {
+            const signupResponse = await api.post('/api/accounts/signup', {
+              email: this.signupEmail,
+              password: this.signupPassword
+            })
+
+            if (signupResponse.data === "회원가입 성공") {
+              alert('회원가입이 완료되었습니다.')
+              this.hideModal()
+            } else {
+              throw new Error('회원가입에 실패했습니다.')
+            }
+          } catch (signupError) {
+            console.error('Failed to signup:', signupError)
+            alert('회원가입 처리 중 오류가 발생했습니다.')
+          }
         } else {
           this.verificationError = '잘못된 인증 코드입니다.'
         }
@@ -412,10 +437,17 @@ export default {
     },
     async resendVerificationCode() {
       try {
-        // TODO: 실제 인증 코드 재전송 API 호출
-        console.log('Resending verification code to:', this.signupEmail)
-        this.startVerificationTimer()
-        this.verificationError = ''
+        const response = await api.post('/api/mail/send-email', {
+          email: this.signupEmail
+        })
+        
+        if (response.data.message === 'EMAIL_SENT') {
+          this.startVerificationTimer()
+          this.verificationError = ''
+          alert('인증 코드가 재전송되었습니다.')
+        } else {
+          throw new Error('이메일 전송에 실패했습니다.')
+        }
       } catch (error) {
         console.error('Failed to resend verification code:', error)
         this.verificationError = '인증 코드 재전송에 실패했습니다.'
@@ -789,5 +821,23 @@ export default {
   background-color: #f8f9fa;
   pointer-events: none;
   opacity: 0.7;
+}
+
+.close-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #666;
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+.close-button:hover {
+  color: #e74c3c;
 }
 </style> 
